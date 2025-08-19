@@ -1,0 +1,47 @@
+name: Build and Push Result Docker Image
+
+on:
+  workflow_dispatch:    
+  push:
+    paths:
+      - 'result/**'       
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # full git history for commit hash
+
+      - name: Set image tag
+        run: |
+          COMMIT_HASH=$(git rev-parse --short=8 HEAD)
+          TIMESTAMP=$(date +%s)
+          
+          # get branch name; fallback to "manual"
+          if [ -z "${GITHUB_REF}" ]; then
+            BRANCH_NAME="main"
+          else
+            BRANCH_NAME=${GITHUB_REF##*/}
+          fi
+
+          # sanitize branch name: lowercase, replace slashes with dashes
+          BRANCH_NAME_SAFE=$(echo "$BRANCH_NAME" | tr '[:upper:]' '[:lower:]' | tr / -)
+
+          IMAGE_TAG="${BRANCH_NAME_SAFE}-${COMMIT_HASH}-${TIMESTAMP}"
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
+          echo "Using image tag: $IMAGE_TAG"
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: ./result
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/result:${{ env.IMAGE_TAG }}
